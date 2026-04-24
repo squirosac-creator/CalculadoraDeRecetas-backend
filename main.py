@@ -144,6 +144,6 @@ def ajustar_receta(data: RecetaRequest):
         })
 
     return {
-        "factor": round(factor, 2),
+        "factor": round(factor, 6),
         "ingredientes": ingredientes_ajustados
     }
