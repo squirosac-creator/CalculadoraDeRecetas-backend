@@ -1,3 +1,5 @@
+# /** @format */
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -34,14 +36,47 @@ class RecetaRequest(BaseModel):
 
 
 # =========================
-# FACTORES DE CONVERSIÓN
+# UNIDADES (BASE)
 # =========================
 
+# FACTORES hacia unidad base
+# masa → gramos
+# volumen → ml
 FACTORES = {
-    "g": {"g": 1, "kg": 0.001},
-    "kg": {"g": 1000, "kg": 1},
-    "ml": {"ml": 1, "l": 0.001},
-    "l": {"ml": 1000, "l": 1},
+    # MASA
+    "g": 1,
+    "kg": 1000,
+    "mg": 0.001,
+    "oz": 28.3495,
+    "lb": 453.592,
+
+    # VOLUMEN
+    "ml": 1,
+    "l": 1000,
+    "tsp": 5,        # cucharadita
+    "tbsp": 15,      # cucharada
+    "cup": 240,      # taza
+    "dash": 0.6,     # pizca líquida aprox
+    "pinch": 0.3,    # pizca seca aprox
+}
+
+# tipo de unidad (para evitar conversiones inválidas)
+TIPO_UNIDAD = {
+    # masa
+    "g": "masa",
+    "kg": "masa",
+    "mg": "masa",
+    "oz": "masa",
+    "lb": "masa",
+
+    # volumen
+    "ml": "volumen",
+    "l": "volumen",
+    "tsp": "volumen",
+    "tbsp": "volumen",
+    "cup": "volumen",
+    "dash": "volumen",
+    "pinch": "volumen",
 }
 
 # =========================
@@ -49,11 +84,19 @@ FACTORES = {
 # =========================
 
 def conversion_valida(origen: str, destino: str) -> bool:
-    return origen in FACTORES and destino in FACTORES[origen]
+    return (
+        origen in FACTORES
+        and destino in FACTORES
+        and TIPO_UNIDAD[origen] == TIPO_UNIDAD[destino]
+    )
 
 
 def convertir(cantidad: float, origen: str, destino: str) -> float:
-    return cantidad * FACTORES[origen][destino]
+    # 1️⃣ convertir a unidad base
+    base = cantidad * FACTORES[origen]
+
+    # 2️⃣ convertir a unidad destino
+    return base / FACTORES[destino]
 
 
 # =========================
@@ -69,17 +112,25 @@ def ajustar_receta(data: RecetaRequest):
     ingredientes_ajustados = []
 
     for ing in data.ingredientes:
-        # 1️⃣ validar conversión
+
+        # validar existencia de unidades
+        if ing.unidadEntrada not in FACTORES or ing.unidadSalida not in FACTORES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unidad no soportada: {ing.unidadEntrada} o {ing.unidadSalida}"
+            )
+
+        # validar tipo compatible
         if not conversion_valida(ing.unidadEntrada, ing.unidadSalida):
             raise HTTPException(
                 status_code=400,
-                detail=f"No existe conversión válida entre {ing.unidadEntrada} y {ing.unidadSalida}"
+                detail=f"No se puede convertir de {ing.unidadEntrada} a {ing.unidadSalida}"
             )
 
-        # 2️⃣ aplicar proporción
+        # aplicar proporción
         cantidad_ajustada = ing.cantidad * factor
 
-        # 3️⃣ convertir unidad
+        # convertir
         cantidad_convertida = convertir(
             cantidad_ajustada,
             ing.unidadEntrada,
